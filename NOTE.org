@@ -2,18 +2,18 @@
 ** Fix the tokenizing step
 [[file:src/main.zig::105][Line 105 of main.zig]]
 ** Add support for Persian using unicode
+** Lowercase input itself
+related to [[*Memory Waste in addWordsForAFile]]
 * Features To Add
 ** Search for multiple tokens
 Should do it for every single one and then add the score together.
 For input use one arg, the user should use '' for input.
-** Switch to bm25
+** DONE Switch to bm25
 ** Support bm25f For obsidian and org-roam
 [[https://en.wikipedia.org/wiki/Okapi_BM25][BM25 wikipedia]]
 BM25F (a version of BM25 that can take document structure and anchor text into account)
 * Optimaztion
-** Use a hash map for the idf for each word. since the word is already allocated with arena, it is only needed to allocate a hashmap using the gpa.
-[[file:src/main.zig::124][instead of running this for loop each time the word is find in any file]]
-** Use a better algorithm than bubble sort
+** DONE Use a better algorithm than bubble sort
 [[file:src/main.zig::64][Line 64 of main.zig]]. Zig itself seems to have sort in std.
 ** Memory Waste in addWordsForAFile
 [[file:src/main.zig::111][Line 111 of main.zig]].

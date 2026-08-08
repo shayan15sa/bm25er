@@ -2,6 +2,47 @@
 ** Fix the tokenizing step
 [[file:src/main.zig::105][Line 105 of main.zig]]
 ** Add support for Persian using unicode
+* Features To Add
+** Search for multiple tokens
+Should do it for every single one and then add the score together.
+For input use one arg, the user should use '' for input.
+** Switch to bm25
+** Support bm25f For obsidian and org-roam
+[[https://en.wikipedia.org/wiki/Okapi_BM25][BM25 wikipedia]]
+BM25F (a version of BM25 that can take document structure and anchor text into account)
 * Optimaztion
 ** Use a hash map for the idf for each word. since the word is already allocated with arena, it is only needed to allocate a hashmap using the gpa.
 [[file:src/main.zig::124][instead of running this for loop each time the word is find in any file]]
+** Use a better algorithm than bubble sort
+[[file:src/main.zig::64][Line 64 of main.zig]]. Zig itself seems to have sort in std.
+** Memory Waste in addWordsForAFile
+[[file:src/main.zig::111][Line 111 of main.zig]].
+In addWordsForAFile, you allocate a new string for every single token you find
+Because arena allocators generally do not support freeing individual items, every time you encounter a word that already exists in the map, you are wasting that arena.alloc. If a file has 100,000 words but only 5,000 unique words, you are wasting 95,000 allocations!
+#+begin_src zig
+  while (tokens.next()) |tok| {
+    // 1. Use a stack buffer for small words (no allocation!)
+    var buf: [128]u8 = undefined;
+    var lower_tok: []u8 = undefined;
+    var is_stack = false;
+
+    if (tok.len <= buf.len) {
+        lower_tok = buf[0..tok.len];
+        is_stack = true;
+    } else {
+        lower_tok = try arena.alloc(u8, tok.len); // Fallback for huge words
+    }
+    _ = std.ascii.lowerString(lower_tok, tok);
+
+    // 2. Check if it exists WITHOUT allocating
+    if (map.getPtr(lower_tok)) |word_ptr| {
+        word_ptr.freq += 1;
+    } else {
+        // 3. It's a new word! Now we allocate from the arena.
+        const final_tok = if (is_stack) try arena.dupe(u8, lower_tok) else lower_tok;
+        var entry = try map.getOrPut(final_tok);
+        entry.value_ptr.key = final_tok;
+        entry.value_ptr.freq = 1;
+    }
+}
+#+end_src

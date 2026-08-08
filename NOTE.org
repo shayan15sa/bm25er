@@ -2,7 +2,7 @@
 ** Fix the tokenizing step
 [[file:src/main.zig::105][Line 105 of main.zig]]
 ** Add support for Persian using unicode
-** Lowercase input itself
+** DONE Lowercase input itself
 related to [[*Memory Waste in addWordsForAFile]]
 * Features To Add
 ** Search for multiple tokens

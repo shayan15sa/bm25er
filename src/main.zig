@@ -15,6 +15,9 @@ pub fn main(init: std.process.Init) !void {
 
     const args = try init.minimal.args.toSlice(arena);
     const search_keyword = if (args.len > 1) args[1] else std.process.exit(1);
+    var lower_buffer: [1024]u8 = undefined;
+    const search_keyword_lower = std.ascii.lowerString(&lower_buffer, search_keyword);
+
     const dir_path_arg = if (args.len > 2) args[2] else ".";
 
     const dir = try std.Io.Dir.cwd().openDir(io, dir_path_arg, .{ .iterate = true });
@@ -47,11 +50,11 @@ pub fn main(init: std.process.Init) !void {
     const avgdl: f32 = @as(f32, @floatFromInt(sum_length)) / @as(f32, @floatFromInt(doc_counter));
 
     var docs_iter = doc_map.iterator();
-    const idf = calculateIDF(&docs_iter, search_keyword);
+    const idf = calculateIDF(&docs_iter, search_keyword_lower);
 
     var iter = doc_map.iterator();
     while (iter.next()) |i| {
-        i.value_ptr.score = calculateScore(i.value_ptr, search_keyword, idf, avgdl);
+        i.value_ptr.score = calculateScore(i.value_ptr, search_keyword_lower, idf, avgdl);
     }
     try printDocWithScoreSorted(doc_map, gpa);
     return;

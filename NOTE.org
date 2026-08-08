@@ -1,0 +1,7 @@
+* Fixes
+** Fix the tokenizing step
+[[file:src/main.zig::105][Line 105 of main.zig]]
+** Add support for Persian using unicode
+* Optimaztion
+** Use a hash map for the idf for each word. since the word is already allocated with arena, it is only needed to allocate a hashmap using the gpa.
+[[file:src/main.zig::124][instead of running this for loop each time the word is find in any file]]

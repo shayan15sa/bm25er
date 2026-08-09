@@ -17,6 +17,7 @@ pub fn main(init: std.process.Init) !void {
     const search_keyword = if (args.len > 1) args[1] else std.process.exit(1);
     var lower_buffer: [1024]u8 = undefined;
     const search_keyword_lower = std.ascii.lowerString(&lower_buffer, search_keyword);
+    var search_keyword_iter = std.mem.tokenizeAny(u8, search_keyword_lower, " ");
 
     const dir_path_arg = if (args.len > 2) args[2] else ".";
 
@@ -49,12 +50,14 @@ pub fn main(init: std.process.Init) !void {
     }
     const avgdl: f32 = @as(f32, @floatFromInt(sum_length)) / @as(f32, @floatFromInt(doc_counter));
 
-    var docs_iter = doc_map.iterator();
-    const idf = calculateIDF(&docs_iter, search_keyword_lower);
+    while (search_keyword_iter.next()) |keyword| {
+        var docs_iter = doc_map.iterator();
+        const idf = calculateIDF(&docs_iter, keyword);
 
-    var iter = doc_map.iterator();
-    while (iter.next()) |i| {
-        i.value_ptr.score = calculateScore(i.value_ptr, search_keyword_lower, idf, avgdl);
+        var iter = doc_map.iterator();
+        while (iter.next()) |i| {
+            i.value_ptr.score += calculateScore(i.value_ptr, keyword, idf, avgdl);
+        }
     }
     try printDocWithScoreSorted(doc_map, gpa);
     return;
@@ -76,9 +79,9 @@ fn printDocWithScoreSorted(doc_map: std.hash_map.StringHashMap(Doc), gpa: std.me
         try doc_list.append(gpa, i.value_ptr);
     }
     std.mem.sort(*Doc, doc_list.items, {}, docScoreLessThan);
+    std.debug.print("----------------------------------------\n", .{});
     for (doc_list.items) |i| {
         if (i.score > 0) {
-            std.debug.print("----------------------------------------\n", .{});
             std.debug.print("File: {s}\n", .{i.sub_path});
             std.debug.print("score: {d}\n", .{i.score});
             std.debug.print("----------------------------------------\n", .{});
@@ -118,7 +121,8 @@ fn addWordsForAFile(gpa: std.mem.Allocator, arena: std.mem.Allocator, dir: std.I
     var counter: u32 = 0;
     while (tokens.next()) |tok| {
         counter += 1;
-        var tok_buffer: [128]u8 = undefined;
+        //TODO: replace 512 with something smaller when the tokenizer is fixed and also supports html. You can check the len and if it exceeds the array size allocate on arena too.
+        var tok_buffer: [512]u8 = undefined;
         const tok_lower = std.ascii.lowerString(&tok_buffer, tok);
 
         if (map.contains(tok_lower)) {

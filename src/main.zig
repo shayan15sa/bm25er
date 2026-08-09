@@ -59,7 +59,7 @@ pub fn main(init: std.process.Init) !void {
             i.value_ptr.score += calculateScore(i.value_ptr, keyword, idf, avgdl);
         }
     }
-    try printDocWithScoreSorted(doc_map, gpa);
+    try printDocWithScoreSorted(doc_map, dir_path_arg, gpa);
     return;
 }
 
@@ -71,7 +71,7 @@ fn docScoreLessThan(q: void, a: *Doc, c: *Doc) bool {
     return false;
 }
 
-fn printDocWithScoreSorted(doc_map: std.hash_map.StringHashMap(Doc), gpa: std.mem.Allocator) !void {
+fn printDocWithScoreSorted(doc_map: std.hash_map.StringHashMap(Doc), root_dir: []const u8, gpa: std.mem.Allocator) !void {
     var doc_list: std.ArrayList(*Doc) = .empty;
     defer doc_list.deinit(gpa);
     var iter = doc_map.iterator();
@@ -82,7 +82,11 @@ fn printDocWithScoreSorted(doc_map: std.hash_map.StringHashMap(Doc), gpa: std.me
     std.debug.print("----------------------------------------\n", .{});
     for (doc_list.items) |i| {
         if (i.score > 0) {
-            std.debug.print("File: {s}\n", .{i.sub_path});
+            if (root_dir[root_dir.len - 1] == '/') {
+                std.debug.print("File: {s}{s}\n", .{ root_dir, i.sub_path });
+            } else {
+                std.debug.print("File: {s}/{s}\n", .{ root_dir, i.sub_path });
+            }
             std.debug.print("score: {d}\n", .{i.score});
             std.debug.print("----------------------------------------\n", .{});
         }

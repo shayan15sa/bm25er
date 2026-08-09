@@ -8,7 +8,7 @@ related to [[*Memory Waste in addWordsForAFile]]
 ** When adding word from docs check for len and other errors
 look at code in [[*Memory Waste in addWordsForAFile]]
 * Features To Add
-** Search for multiple tokens
+** DONE Search for multiple tokens
 Should do it for every single one and then add the score together.
 For input use one arg, the user should use '' for input.
 ** DONE Switch to bm25

@@ -118,15 +118,14 @@ fn addWordsForAFile(gpa: std.mem.Allocator, arena: std.mem.Allocator, dir: std.I
     var counter: u32 = 0;
     while (tokens.next()) |tok| {
         counter += 1;
-        // const tok_copy = try arena.dupe(u8, std.ascii.low);
-        const tok_copy = try arena.alloc(u8, tok.len);
-        _ = std.ascii.lowerString(tok_copy, tok);
-        const entry = try map.getOrPut(tok_copy);
-        entry.value_ptr.key = tok_copy;
-        if (entry.found_existing) {
-            entry.value_ptr.freq += 1;
+        var tok_buffer: [128]u8 = undefined;
+        const tok_lower = std.ascii.lowerString(&tok_buffer, tok);
+
+        if (map.contains(tok_lower)) {
+            map.getEntry(tok_lower).?.value_ptr.freq += 1;
         } else {
-            entry.value_ptr.freq = 1;
+            const tok_arena = try arena.dupe(u8, tok_lower);
+            try map.put(tok_arena, .{ .key = tok_arena, .freq = 1 });
         }
     }
     doc.lenght = counter;

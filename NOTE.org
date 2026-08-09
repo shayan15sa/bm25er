@@ -1,9 +1,12 @@
 * Fixes
 ** Fix the tokenizing step
 [[file:src/main.zig::105][Line 105 of main.zig]]
+look at tf idf implemtnation of tsoding
 ** Add support for Persian using unicode
 ** DONE Lowercase input itself
 related to [[*Memory Waste in addWordsForAFile]]
+** When adding word from docs check for len and other errors
+look at code in [[*Memory Waste in addWordsForAFile]]
 * Features To Add
 ** Search for multiple tokens
 Should do it for every single one and then add the score together.
@@ -15,7 +18,7 @@ BM25F (a version of BM25 that can take document structure and anchor text into a
 * Optimaztion
 ** DONE Use a better algorithm than bubble sort
 [[file:src/main.zig::64][Line 64 of main.zig]]. Zig itself seems to have sort in std.
-** Memory Waste in addWordsForAFile
+** DONE Memory Waste in addWordsForAFile
 [[file:src/main.zig::111][Line 111 of main.zig]].
 In addWordsForAFile, you allocate a new string for every single token you find
 Because arena allocators generally do not support freeing individual items, every time you encounter a word that already exists in the map, you are wasting that arena.alloc. If a file has 100,000 words but only 5,000 unique words, you are wasting 95,000 allocations!

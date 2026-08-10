@@ -2,7 +2,7 @@ const std = @import("std");
 const Io = std.Io;
 
 const Word = struct { key: []const u8, freq: u16 };
-const Doc = struct { sub_path: []const u8, word_map: std.StringHashMap(Word), lenght: u32, score: f32 = 0.0 };
+const Doc = struct { sub_path: []const u8, word_map: std.StringHashMap(Word), length: u32, score: f32 = 0.0 };
 
 pub fn main(init: std.process.Init) !void {
     const gpa = init.gpa;
@@ -40,10 +40,10 @@ pub fn main(init: std.process.Init) !void {
     while (try walker.next(io)) |w| {
         if (w.kind == .file) {
             const path_copy = try arena.dupe(u8, w.path);
-            const doc = try doc_map.getOrPutValue(path_copy, .{ .sub_path = path_copy, .word_map = std.StringHashMap(Word).init(gpa), .lenght = 0 });
+            const doc = try doc_map.getOrPutValue(path_copy, .{ .sub_path = path_copy, .word_map = std.StringHashMap(Word).init(gpa), .length = 0 });
             try addWordsForAFile(gpa, arena, dir, io, w.path, doc.value_ptr);
             doc_counter += 1;
-            sum_length += doc.value_ptr.lenght;
+            sum_length += doc.value_ptr.length;
         } else {
             continue;
         }
@@ -136,7 +136,7 @@ fn addWordsForAFile(gpa: std.mem.Allocator, arena: std.mem.Allocator, dir: std.I
             try map.put(tok_arena, .{ .key = tok_arena, .freq = 1 });
         }
     }
-    doc.lenght = counter;
+    doc.length = counter;
 }
 
 const k1 = 1.5;
@@ -145,7 +145,7 @@ const b = 0.75;
 fn calculateScore(doc: *Doc, word: []const u8, idf: f32, avgdl: f32) f32 {
     if (doc.word_map.get(word)) |in_doc_word| {
         const tf = @as(f32, @floatFromInt(in_doc_word.freq));
-        return idf * (tf * (k1 + 1)) / (tf + (k1 * (1 - b + (b * (@as(f32, @floatFromInt(doc.lenght)) / avgdl)))));
+        return idf * (tf * (k1 + 1)) / (tf + (k1 * (1 - b + (b * (@as(f32, @floatFromInt(doc.length)) / avgdl)))));
     }
     return 0;
 }

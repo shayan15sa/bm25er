@@ -7,6 +7,27 @@ look at tf idf implemtnation of tsoding
 related to [[*Memory Waste in addWordsForAFile]]
 ** When adding word from docs check for len and other errors
 look at code in [[*Memory Waste in addWordsForAFile]]
+** Use a buffered reader instead of loading the whole file into ram
+When I tried to scan one of my repos, a header file imported by raylib was too large. readFileAlloc() is a nice convenient function, and I agree with your decision to limit the amount of memory this consumes, but since you don’t know the size of the files in advance and need to read many files, a better way is to set aside a sufficiently large buffer (ex: 4096) and do buffered reads without allocation.
+example using the reader interface: [[https://cookbook.ziglang.cc/01-01-read-file-line-by-line/]]
+** Skip binary files
+1. On binary files: I’ve heard of a technique for detecting if you’re reading a binary file where you check the first 128 or so bytes to see if they’re all valid, printable characters. As far as I know there isn’t support in the standard for non-ASCII but just checking std.ascii.isAscii() would be okay.
+2. I believe the way grep does it is by scanning the first buffer-load (e.g 32kB) it reads for null characters, or invalid UTF-8 encoding (e.g. overlong characters). I think you could use the functions in std.unicode to do that. I might give that a try actually - I have a crude zig version of grep which I made as an example in a library.
+#+begin_src zig
+/// First ensures the buffer is full (or EOF), then returns true
+/// if the buffer consists entirely of UTF-8 codepoints.
+///
+/// Useful for distinguishing text files from binary files.
+fn checkFileIsValidUtf8(reader: *std.Io.Reader) Io.Reader.Error!bool {
+    const peek = reader.peek(reader.buffer.len) catch |err|
+        switch (err) {
+            Io.Reader.Error.EndOfStream => try reader.peekGreedy(0),
+            else => return err,
+        };
+    // std.log.debug("Checking utf-8 validity for first {} bytes", .{peek.len});
+    return std.unicode.utf8ValidateSlice(peek);
+}
+#+end_src
 * Features To Add
 ** DONE Search for multiple tokens
 Should do it for every single one and then add the score together.

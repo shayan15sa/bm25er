@@ -110,7 +110,7 @@ fn addWordsForAFile(gpa: std.mem.Allocator, arena: std.mem.Allocator, dir: std.I
     const f = std.Io.Dir.readFileAlloc(dir, io, file_name, gpa, .limited(1_000_000)) catch |err| {
         switch (err) {
             error.StreamTooLong => {
-                std.debug.print("File {s} is too big abbas", .{file_name});
+                std.debug.print("File {s} is too big\n", .{file_name});
                 return;
             },
             else => {
@@ -120,19 +120,16 @@ fn addWordsForAFile(gpa: std.mem.Allocator, arena: std.mem.Allocator, dir: std.I
     };
     defer gpa.free(f);
 
+    _ = std.ascii.lowerString(f, f);
     var map = &doc.word_map;
-    var tokens = std.mem.tokenizeAny(u8, f, "[]*#&/-()\"\': ,.\n");
+    var tokens = std.mem.tokenizeAny(u8, f, "<>[]*#&/-()\"\': ,.\n");
     var counter: u32 = 0;
     while (tokens.next()) |tok| {
         counter += 1;
-        //TODO: replace 512 with something smaller when the tokenizer is fixed and also supports html. You can check the len and if it exceeds the array size allocate on arena too.
-        var tok_buffer: [512]u8 = undefined;
-        const tok_lower = std.ascii.lowerString(&tok_buffer, tok);
-
-        if (map.contains(tok_lower)) {
-            map.getEntry(tok_lower).?.value_ptr.freq += 1;
+        if (map.contains(tok)) {
+            map.getEntry(tok).?.value_ptr.freq += 1;
         } else {
-            const tok_arena = try arena.dupe(u8, tok_lower);
+            const tok_arena = try arena.dupe(u8, tok);
             try map.put(tok_arena, .{ .key = tok_arena, .freq = 1 });
         }
     }

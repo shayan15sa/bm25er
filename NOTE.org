@@ -5,7 +5,7 @@ look at tf idf implemtnation of tsoding
 ** Add support for Persian using unicode
 ** DONE Lowercase input itself
 related to [[*Memory Waste in addWordsForAFile]]
-** When adding word from docs check for len and other errors
+** DONE When adding word from docs check for len and other errors
 look at code in [[*Memory Waste in addWordsForAFile]]
 ** Use a buffered reader instead of loading the whole file into ram
 When I tried to scan one of my repos, a header file imported by raylib was too large. readFileAlloc() is a nice convenient function, and I agree with your decision to limit the amount of memory this consumes, but since you don’t know the size of the files in advance and need to read many files, a better way is to set aside a sufficiently large buffer (ex: 4096) and do buffered reads without allocation.
@@ -70,3 +70,5 @@ Because arena allocators generally do not support freeing individual items, ever
     }
 }
 #+end_src
+** Pararlize
+

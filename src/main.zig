@@ -32,19 +32,26 @@ pub fn main(init: std.process.Init) !void {
         doc_map.deinit(gpa);
     }
 
-    var sum_length: u32 = 0;
+    var group: Io.Group = .init;
+    defer group.cancel(io);
     var doc_counter: u32 = 0;
     while (try walker.next(io)) |w| {
         if (w.kind == .file) {
             const path_copy = try arena.dupe(u8, w.path);
             try doc_map.append(gpa, .{ .sub_path = path_copy, .word_map = std.StringHashMap(Word).init(gpa), .length = 0 });
-
-            try addWordsForAFile(arena, dir, io, w.path, &doc_map.items[doc_map.items.len - 1]);
             doc_counter += 1;
-            sum_length += doc_map.items[doc_map.items.len - 1].length;
         } else {
             continue;
         }
+    }
+    for (doc_map.items) |*d| {
+        group.async(io, addWordsForAFile, .{ arena, dir, io, d });
+    }
+    try group.await(io);
+
+    var sum_length: u32 = 0;
+    for (doc_map.items) |d| {
+        sum_length += d.length;
     }
     const avgdl: f32 = @as(f32, @floatFromInt(sum_length)) / @as(f32, @floatFromInt(doc_counter));
 
@@ -69,7 +76,7 @@ fn docScoreLessThan(q: void, a: Doc, c: Doc) bool {
 
 fn printDocWithScoreSorted(doc_map: *std.ArrayList(Doc), root_dir: []const u8) !void {
     std.mem.sort(Doc, doc_map.items, {}, docScoreLessThan);
-    std.debug.print("----------------------------------------\n", .{});
+    std.debug.print("--------------------RESULTS--------------------\n", .{});
     for (doc_map.items) |i| {
         if (i.score > 0) {
             if (root_dir[root_dir.len - 1] == '/') {
@@ -77,7 +84,7 @@ fn printDocWithScoreSorted(doc_map: *std.ArrayList(Doc), root_dir: []const u8) !
             } else {
                 std.debug.print("File: {s}/{s}\n", .{ root_dir, i.sub_path });
             }
-            std.debug.print("score: {d}\n", .{i.score});
+            std.debug.print("Score: {d}\n", .{i.score});
             std.debug.print("----------------------------------------\n", .{});
         }
     }
@@ -96,10 +103,16 @@ fn printDocWithWords(doc_map: std.hash_map.StringHashMap(Doc)) void {
     }
 }
 
-fn addWordsForAFile(arena: std.mem.Allocator, dir: std.Io.Dir, io: std.Io, file_name: []const u8, doc: *Doc) !void {
-    const f = try std.Io.Dir.openFile(dir, io, file_name, .{});
+fn addWordsForAFile(arena: std.mem.Allocator, dir: std.Io.Dir, io: std.Io, doc: *Doc) void {
+    const f = std.Io.Dir.openFile(dir, io, doc.sub_path, .{}) catch |err| {
+        std.debug.print("[ERROR] Unable to open '{s}': {s}\n", .{
+            doc.sub_path, @errorName(err),
+        });
+        return;
+    };
     defer f.close(io);
 
+    std.debug.print("READ FILE: {s}\n", .{doc.sub_path});
     var read_buffer: [4096]u8 = undefined;
     var reader = f.reader(io, &read_buffer);
     var counter: u32 = 0;
@@ -114,8 +127,18 @@ fn addWordsForAFile(arena: std.mem.Allocator, dir: std.Io.Dir, io: std.Io, file_
             if (map.contains(tok)) {
                 map.getEntry(tok).?.value_ptr.freq += 1;
             } else {
-                const tok_arena = try arena.dupe(u8, tok);
-                try map.put(tok_arena, .{ .key = tok_arena, .freq = 1 });
+                const tok_arena = arena.dupe(u8, tok) catch |err| {
+                    std.debug.print("[ERROR] RAN OUT OF RAM: {s}\n", .{
+                        @errorName(err),
+                    });
+                    std.process.exit(1);
+                };
+                map.put(tok_arena, .{ .key = tok_arena, .freq = 1 }) catch |err| {
+                    std.debug.print("[ERROR] RAN OUT OF RAM: {s}\n", .{
+                        @errorName(err),
+                    });
+                    std.process.exit(1);
+                };
             }
         }
     } else |err| {
@@ -124,7 +147,7 @@ fn addWordsForAFile(arena: std.mem.Allocator, dir: std.Io.Dir, io: std.Io, file_
                 //TODO: allocate on the heap.
             },
             error.ReadFailed => {
-                std.debug.print("[ERROR] Failed to read file: {s}", .{file_name});
+                std.debug.print("[ERROR] Failed to read file: {s}", .{doc.sub_path});
             },
         }
     }

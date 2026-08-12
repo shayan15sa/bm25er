@@ -70,5 +70,5 @@ Because arena allocators generally do not support freeing individual items, ever
     }
 }
 #+end_src
-** Pararlize
+** DONE Pararlize
 

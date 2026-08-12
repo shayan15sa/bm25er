@@ -1,7 +1,7 @@
 const std = @import("std");
 const Io = std.Io;
 
-const Word = struct { key: []const u8, freq: u16 };
+const Word = struct { key: []const u8, freq: u32 };
 const Doc = struct { sub_path: []const u8, word_map: std.StringHashMap(Word), length: u32, score: f32 = 0.0 };
 
 pub fn main(init: std.process.Init) !void {
@@ -9,9 +9,6 @@ pub fn main(init: std.process.Init) !void {
     const arena: std.mem.Allocator = init.arena.allocator();
 
     const io = init.io;
-
-    var map = std.StringHashMap(u16).init(gpa);
-    defer map.deinit();
 
     const args = try init.minimal.args.toSlice(arena);
     const search_keyword = if (args.len > 1) args[1] else std.process.exit(1);
@@ -27,23 +24,24 @@ pub fn main(init: std.process.Init) !void {
     var walker = try dir.walk(gpa);
     defer walker.deinit();
 
-    var doc_map = std.StringHashMap(Doc).init(gpa);
+    var doc_map: std.ArrayList(Doc) = .empty;
     defer {
-        var iter = doc_map.iterator();
-        while (iter.next()) |entry| {
-            entry.value_ptr.word_map.deinit();
+        for (doc_map.items) |*i| {
+            i.word_map.deinit();
         }
-        doc_map.deinit();
+        doc_map.deinit(gpa);
     }
+
     var sum_length: u32 = 0;
     var doc_counter: u32 = 0;
     while (try walker.next(io)) |w| {
         if (w.kind == .file) {
             const path_copy = try arena.dupe(u8, w.path);
-            const doc = try doc_map.getOrPutValue(path_copy, .{ .sub_path = path_copy, .word_map = std.StringHashMap(Word).init(gpa), .length = 0 });
-            try addWordsForAFile(arena, dir, io, w.path, doc.value_ptr);
+            try doc_map.append(gpa, .{ .sub_path = path_copy, .word_map = std.StringHashMap(Word).init(gpa), .length = 0 });
+
+            try addWordsForAFile(arena, dir, io, w.path, &doc_map.items[doc_map.items.len - 1]);
             doc_counter += 1;
-            sum_length += doc.value_ptr.length;
+            sum_length += doc_map.items[doc_map.items.len - 1].length;
         } else {
             continue;
         }
@@ -51,19 +49,17 @@ pub fn main(init: std.process.Init) !void {
     const avgdl: f32 = @as(f32, @floatFromInt(sum_length)) / @as(f32, @floatFromInt(doc_counter));
 
     while (search_keyword_iter.next()) |keyword| {
-        var docs_iter = doc_map.iterator();
-        const idf = calculateIDF(&docs_iter, keyword);
+        const idf = calculateIDF(doc_map, keyword);
 
-        var iter = doc_map.iterator();
-        while (iter.next()) |i| {
-            i.value_ptr.score += calculateScore(i.value_ptr, keyword, idf, avgdl);
+        for (doc_map.items) |*i| {
+            i.score += calculateScore(i, keyword, idf, avgdl);
         }
     }
-    try printDocWithScoreSorted(doc_map, dir_path_arg, gpa);
+    try printDocWithScoreSorted(&doc_map, dir_path_arg);
     return;
 }
 
-fn docScoreLessThan(q: void, a: *Doc, c: *Doc) bool {
+fn docScoreLessThan(q: void, a: Doc, c: Doc) bool {
     _ = q;
     if (a.score > c.score) {
         return true;
@@ -71,16 +67,10 @@ fn docScoreLessThan(q: void, a: *Doc, c: *Doc) bool {
     return false;
 }
 
-fn printDocWithScoreSorted(doc_map: std.hash_map.StringHashMap(Doc), root_dir: []const u8, gpa: std.mem.Allocator) !void {
-    var doc_list: std.ArrayList(*Doc) = .empty;
-    defer doc_list.deinit(gpa);
-    var iter = doc_map.iterator();
-    while (iter.next()) |i| {
-        try doc_list.append(gpa, i.value_ptr);
-    }
-    std.mem.sort(*Doc, doc_list.items, {}, docScoreLessThan);
+fn printDocWithScoreSorted(doc_map: *std.ArrayList(Doc), root_dir: []const u8) !void {
+    std.mem.sort(Doc, doc_map.items, {}, docScoreLessThan);
     std.debug.print("----------------------------------------\n", .{});
-    for (doc_list.items) |i| {
+    for (doc_map.items) |i| {
         if (i.score > 0) {
             if (root_dir[root_dir.len - 1] == '/') {
                 std.debug.print("File: {s}{s}\n", .{ root_dir, i.sub_path });
@@ -114,7 +104,8 @@ fn addWordsForAFile(arena: std.mem.Allocator, dir: std.Io.Dir, io: std.Io, file_
     var reader = f.reader(io, &read_buffer);
     var counter: u32 = 0;
 
-    while (try reader.interface.takeDelimiter('\n')) |s| {
+    while (reader.interface.takeDelimiter('\n')) |maybe_s| {
+        const s = maybe_s orelse break;
         _ = std.ascii.lowerString(s, s);
         var map = &doc.word_map;
         var tokens = std.mem.tokenizeAny(u8, s, "!?{}<>[]*#&/-()\"\': ,.\n");
@@ -126,6 +117,15 @@ fn addWordsForAFile(arena: std.mem.Allocator, dir: std.Io.Dir, io: std.Io, file_
                 const tok_arena = try arena.dupe(u8, tok);
                 try map.put(tok_arena, .{ .key = tok_arena, .freq = 1 });
             }
+        }
+    } else |err| {
+        switch (err) {
+            error.StreamTooLong => {
+                //TODO: allocate on the heap.
+            },
+            error.ReadFailed => {
+                std.debug.print("[ERROR] Failed to read file: {s}", .{file_name});
+            },
         }
     }
 
@@ -143,14 +143,14 @@ fn calculateScore(doc: *Doc, word: []const u8, idf: f32, avgdl: f32) f32 {
     return 0;
 }
 
-inline fn calculateIDF(docs_iter: anytype, word: []const u8) f32 {
+inline fn calculateIDF(doc_map: std.ArrayList(Doc), word: []const u8) f32 {
     var n: u32 = 0;
-    var doc_counter: u32 = 0;
-    while (docs_iter.next()) |i| {
-        if (i.value_ptr.word_map.contains(word)) {
+    const doc_counter = doc_map.items.len;
+    for (doc_map.items) |i| {
+        if (i.word_map.contains(word)) {
             n += 1;
         }
-        doc_counter += 1;
     }
+
     return @log(1 + (((@as(f32, @floatFromInt(doc_counter)) - @as(f32, @floatFromInt(n)) + 0.5) / (@as(f32, @floatFromInt(n)) + 0.5))));
 }

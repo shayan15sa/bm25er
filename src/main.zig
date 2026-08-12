@@ -41,7 +41,7 @@ pub fn main(init: std.process.Init) !void {
         if (w.kind == .file) {
             const path_copy = try arena.dupe(u8, w.path);
             const doc = try doc_map.getOrPutValue(path_copy, .{ .sub_path = path_copy, .word_map = std.StringHashMap(Word).init(gpa), .length = 0 });
-            try addWordsForAFile(gpa, arena, dir, io, w.path, doc.value_ptr);
+            try addWordsForAFile(arena, dir, io, w.path, doc.value_ptr);
             doc_counter += 1;
             sum_length += doc.value_ptr.length;
         } else {
@@ -106,33 +106,29 @@ fn printDocWithWords(doc_map: std.hash_map.StringHashMap(Doc)) void {
     }
 }
 
-fn addWordsForAFile(gpa: std.mem.Allocator, arena: std.mem.Allocator, dir: std.Io.Dir, io: std.Io, file_name: []const u8, doc: *Doc) !void {
-    const f = std.Io.Dir.readFileAlloc(dir, io, file_name, gpa, .limited(1_000_000)) catch |err| {
-        switch (err) {
-            error.StreamTooLong => {
-                std.debug.print("File {s} is too big\n", .{file_name});
-                return;
-            },
-            else => {
-                return err;
-            },
-        }
-    };
-    defer gpa.free(f);
+fn addWordsForAFile(arena: std.mem.Allocator, dir: std.Io.Dir, io: std.Io, file_name: []const u8, doc: *Doc) !void {
+    const f = try std.Io.Dir.openFile(dir, io, file_name, .{});
+    defer f.close(io);
 
-    _ = std.ascii.lowerString(f, f);
-    var map = &doc.word_map;
-    var tokens = std.mem.tokenizeAny(u8, f, "<>[]*#&/-()\"\': ,.\n");
+    var read_buffer: [4096]u8 = undefined;
+    var reader = f.reader(io, &read_buffer);
     var counter: u32 = 0;
-    while (tokens.next()) |tok| {
-        counter += 1;
-        if (map.contains(tok)) {
-            map.getEntry(tok).?.value_ptr.freq += 1;
-        } else {
-            const tok_arena = try arena.dupe(u8, tok);
-            try map.put(tok_arena, .{ .key = tok_arena, .freq = 1 });
+
+    while (try reader.interface.takeDelimiter('\n')) |s| {
+        _ = std.ascii.lowerString(s, s);
+        var map = &doc.word_map;
+        var tokens = std.mem.tokenizeAny(u8, s, "!?{}<>[]*#&/-()\"\': ,.\n");
+        while (tokens.next()) |tok| {
+            counter += 1;
+            if (map.contains(tok)) {
+                map.getEntry(tok).?.value_ptr.freq += 1;
+            } else {
+                const tok_arena = try arena.dupe(u8, tok);
+                try map.put(tok_arena, .{ .key = tok_arena, .freq = 1 });
+            }
         }
     }
+
     doc.length = counter;
 }
 
